@@ -6,15 +6,12 @@ namespace UdpToolkit.Network.Tests
     using System.Net.Sockets;
     using System.Threading;
     using System.Threading.Tasks;
-    using UdpToolkit.Logging;
-    using UdpToolkit.Network.Channels;
     using UdpToolkit.Network.Clients;
-    using UdpToolkit.Network.Connections;
+    using UdpToolkit.Network.Contracts;
     using UdpToolkit.Network.Contracts.Clients;
     using UdpToolkit.Network.Contracts.Protocol;
     using UdpToolkit.Network.Contracts.Sockets;
     using UdpToolkit.Network.Tests.Framework;
-    using UdpToolkit.Network.Utils;
 
     internal static class Utils
     {
@@ -26,22 +23,12 @@ namespace UdpToolkit.Network.Tests
             ISocketFactory socketFactory,
             int mtuSize = int.MaxValue)
         {
-            var factory = new UdpClientFactory(
-                udpClientSettings: new UdpClientSettings(
-                    mtuSizeLimit: mtuSize,
-                    udpClientBufferSize: 2048,
-                    pollFrequency: 15,
-                    allowIncomingConnections: true,
-                    resendTimeout: TimeSpan.FromSeconds(10),
-                    channelsFactory: new ChannelsFactory(),
-                    socketFactory: socketFactory),
-                connectionPoolSettings: new ConnectionPoolSettings(
-                    connectionTimeout: TimeSpan.FromSeconds(10),
-                    connectionsCleanupFrequency: TimeSpan.FromSeconds(10)),
-                loggerFactory: new SimpleConsoleLoggerFactory(LogLevel.Debug),
-                dateTimeProvider: new DateTimeProvider());
+            var settings = new NetworkSettings();
 
-            var client = factory.Create(new IpV4Address(address: host.ToInt(), port: port));
+            var factory = new UdpClientFactory(
+                networkSettings: settings);
+
+            var client = factory.Create(Guid.NewGuid().ToString(), new IpV4Address(address: IpUtils.ToInt(host), port: port));
 
             Task.Run(() => client.StartReceive(default));
 
@@ -97,18 +84,18 @@ namespace UdpToolkit.Network.Tests
         }
 
         internal static Task HeartbeatAsync(
-            this IUdpClient udpClient,
+            this IUdpClient client,
             IpV4Address serverIp,
             List<HeartbeatInfo> buffer)
         {
             var heartbeatTask = SubscribeOnHeartbeat();
-            udpClient.Heartbeat(serverIp);
+            client.Ping(serverIp);
             return heartbeatTask;
 
             Task SubscribeOnHeartbeat()
             {
                 var signal = new SemaphoreSlim(0, 1);
-                udpClient.OnHeartbeat += (connectionId, rtt) =>
+                client.OnPing += (connectionId, rtt) =>
                 {
                     buffer.Add(new HeartbeatInfo(connectionId, rtt));
                     signal.Release();
@@ -120,12 +107,12 @@ namespace UdpToolkit.Network.Tests
 
         internal static Task WaitNewPacketsAsync(
             this IUdpClient udpClient,
-            List<PacketInfo> buffer)
+            List<InNetworkPacket> buffer)
         {
             var signal = new SemaphoreSlim(0, 1);
-            udpClient.OnPacketReceived += (ip, connectionId, payload, channelId, dataType) =>
+            udpClient.OnPacketReceived += (networkPacket) =>
             {
-                buffer.Add(new PacketInfo(connectionId, ip, dataType, channelId, payload));
+                buffer.Add(networkPacket);
                 signal.Release();
             };
 
@@ -134,12 +121,12 @@ namespace UdpToolkit.Network.Tests
 
         internal static Task WaitDroppedPacketAsync(
             this IUdpClient udpClient,
-            List<PacketInfo> buffer)
+            List<InNetworkPacket> buffer)
         {
             var signal = new SemaphoreSlim(0, 1);
-            udpClient.OnPacketDropped += (ip, connectionId, payload, channelId, dataType) =>
+            udpClient.OnPacketDropped += (networkPacket) =>
             {
-                buffer.Add(new PacketInfo(connectionId, ip, dataType, channelId, payload));
+                buffer.Add(networkPacket);
                 signal.Release();
             };
 
@@ -148,12 +135,12 @@ namespace UdpToolkit.Network.Tests
 
         internal static Task WaitInvalidPacketsAsync(
             this IUdpClient udpClient,
-            List<InvalidPacketInfo> buffer)
+            List<InNetworkPacket> buffer)
         {
             var signal = new SemaphoreSlim(0, 1);
-            udpClient.OnInvalidPacketReceived += (ip, payload) =>
+            udpClient.OnInvalidPacketReceived += (networkPacket) =>
             {
-                buffer.Add(new InvalidPacketInfo(ip, payload));
+                buffer.Add(networkPacket);
                 signal.Release();
             };
 

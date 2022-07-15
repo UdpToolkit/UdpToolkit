@@ -2,58 +2,65 @@ namespace UdpToolkit.Framework
 {
     using System;
     using System.Diagnostics.CodeAnalysis;
-    using System.Net;
     using System.Runtime.CompilerServices;
     using System.Threading;
-    using System.Threading.Tasks;
+    using UdpToolkit.Framework.CodeGenerator.Contracts;
     using UdpToolkit.Framework.Contracts;
-    using UdpToolkit.Logging;
+    using UdpToolkit.Network.Contracts;
     using UdpToolkit.Network.Contracts.Clients;
+    using UdpToolkit.Network.Contracts.Packets;
+    using UdpToolkit.Network.Contracts.Pooling;
     using UdpToolkit.Network.Contracts.Sockets;
+    using UdpToolkit.Serialization;
 
     /// <summary>
     /// HostClient.
     /// </summary>
     public sealed class HostClient : IHostClient
     {
+        private readonly ISerializer _serializer;
+        private readonly IpV4Address _serverIpAddress;
         private readonly CancellationTokenSource _cancellationTokenSource;
-        private readonly HostClientSettingsInternal _hostClientSettingsInternal;
+        private readonly ConcurrentPool<OutNetworkPacket> _outPacketsPool;
 
-        private readonly IDateTimeProvider _dateTimeProvider;
-        private readonly ILogger _logger;
+        private readonly IHostWorker _hostWorker;
         private readonly IUdpClient _udpClient;
-        private readonly IQueueDispatcher<OutPacket> _outQueueDispatcher;
-
-        private DateTimeOffset _startConnect;
+        private readonly IQueueDispatcher<OutNetworkPacket> _outQueueDispatcher;
         private bool _disposed = false;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="HostClient"/> class.
         /// </summary>
-        /// <param name="hostClientSettingsInternal">Instance of internal host client settings.</param>
-        /// <param name="dateTimeProvider">Instance of date time provider.</param>
-        /// <param name="logger">Instance of logger.</param>
+        /// <param name="serverIpAddress">Server ip address.</param>
         /// <param name="cancellationTokenSource">Instance of cancellation token source.</param>
         /// <param name="udpClient">Instance of UDP client.</param>
         /// <param name="outQueueDispatcher">Instance of outQueueDispatcher.</param>
+        /// <param name="outPacketsPool">Instance of out packets pool.</param>
+        /// <param name="hostWorker">Instance of host worker.</param>
+        /// <param name="serializer">Instance of serializer.</param>
         public HostClient(
-            HostClientSettingsInternal hostClientSettingsInternal,
-            IDateTimeProvider dateTimeProvider,
-            ILogger logger,
+            IpV4Address serverIpAddress,
             CancellationTokenSource cancellationTokenSource,
             IUdpClient udpClient,
-            IQueueDispatcher<OutPacket> outQueueDispatcher)
+            IQueueDispatcher<OutNetworkPacket> outQueueDispatcher,
+            ConcurrentPool<OutNetworkPacket> outPacketsPool,
+            IHostWorker hostWorker,
+            ISerializer serializer)
         {
-            _hostClientSettingsInternal = hostClientSettingsInternal;
+            _serverIpAddress = serverIpAddress;
             _cancellationTokenSource = cancellationTokenSource;
             _udpClient = udpClient;
             _outQueueDispatcher = outQueueDispatcher;
-            _dateTimeProvider = dateTimeProvider;
-            _logger = logger;
+            _outPacketsPool = outPacketsPool;
+            _hostWorker = hostWorker;
+            _serializer = serializer;
 
-            OnConnectionTimeout += () =>
+            this._udpClient.OnPacketExpired += (pendingPacket) =>
             {
-                IsConnected = false;
+                if (pendingPacket.DataType == NetworkConsts.Connect)
+                {
+                    this.OnConnectionTimeout?.Invoke();
+                }
             };
         }
 
@@ -89,27 +96,18 @@ namespace UdpToolkit.Framework
 
         /// <inheritdoc />
         public void Connect(
-            Guid? connectionId = null)
+            Guid connectionId)
         {
-            _startConnect = _dateTimeProvider.GetUtcNow();
-            _udpClient.Connect(_hostClientSettingsInternal.ServerIpV4, connectionId);
-
-            var token = _cancellationTokenSource.Token;
-
-            Task.Factory.StartNew(
-                function: () => StartHeartbeat(token),
-                cancellationToken: token,
-                creationOptions: TaskCreationOptions.LongRunning,
-                scheduler: TaskScheduler.Current);
+            _udpClient.Connect(_serverIpAddress, connectionId);
         }
 
         /// <inheritdoc />
         public void Connect(
             string host,
             int port,
-            Guid? connectionId = null)
+            Guid connectionId)
         {
-            var destination = new IpV4Address(IPAddress.Parse(host).ToInt(), (ushort)port);
+            var destination = new IpV4Address(IpUtils.ToInt(host), (ushort)port);
 
             _udpClient.Connect(destination, connectionId);
         }
@@ -117,7 +115,7 @@ namespace UdpToolkit.Framework
         /// <inheritdoc />
         public void Disconnect()
         {
-            _udpClient.Disconnect(_hostClientSettingsInternal.ServerIpV4);
+            _udpClient.Disconnect(_serverIpAddress);
         }
 
         /// <inheritdoc />
@@ -125,9 +123,21 @@ namespace UdpToolkit.Framework
             string host,
             int port)
         {
-            var from = new IpV4Address(IPAddress.Parse(host).ToInt(), (ushort)port);
+            var from = new IpV4Address(IpUtils.ToInt(host), (ushort)port);
 
             _udpClient.Disconnect(from);
+        }
+
+        /// <inheritdoc />
+        public void Ping()
+        {
+            _udpClient.Ping(_serverIpAddress);
+        }
+
+        /// <inheritdoc />
+        public void ResendPackets()
+        {
+            _udpClient.ResendPackets();
         }
 
         /// <inheritdoc />
@@ -135,6 +145,7 @@ namespace UdpToolkit.Framework
             TEvent @event,
             IpV4Address destination,
             byte channelId)
+            where TEvent : class, IDisposable
         {
             SendInternal(
                 @event: @event,
@@ -146,10 +157,11 @@ namespace UdpToolkit.Framework
         public void Send<TEvent>(
             TEvent @event,
             byte channelId)
+            where TEvent : class, IDisposable
         {
             SendInternal(
                 @event: @event,
-                destination: _hostClientSettingsInternal.ServerIpV4,
+                destination: _serverIpAddress,
                 channelId: channelId);
         }
 
@@ -162,6 +174,7 @@ namespace UdpToolkit.Framework
             IpV4Address ipV4,
             Guid connectionId)
         {
+            Console.WriteLine("Connect");
             IsConnected = true;
             OnConnected?.Invoke(ipV4, connectionId);
         }
@@ -183,32 +196,10 @@ namespace UdpToolkit.Framework
         /// Update RTT time for host client (Internal use only).
         /// </summary>
         /// <param name="rtt">Round-trip time in ms.</param>
-        internal void HeartbeatReceived(
+        internal void RttReceived(
             double rtt)
         {
             OnRttReceived?.Invoke(rtt);
-        }
-
-        private async Task StartHeartbeat(
-            CancellationToken cancellationToken)
-        {
-            if (!_hostClientSettingsInternal.HeartbeatDelayMs.HasValue)
-            {
-                return;
-            }
-
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                if (!IsConnected && _dateTimeProvider.GetUtcNow() - _startConnect > _hostClientSettingsInternal.ConnectionTimeout)
-                {
-                    OnConnectionTimeout?.Invoke();
-                    return;
-                }
-
-                _udpClient.Heartbeat(_hostClientSettingsInternal.ServerIpV4);
-
-                await Task.Delay(_hostClientSettingsInternal.HeartbeatDelayMs.Value, cancellationToken).ConfigureAwait(false);
-            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -216,16 +207,30 @@ namespace UdpToolkit.Framework
             TEvent @event,
             IpV4Address destination,
             byte channelId)
+            where TEvent : class, IDisposable
         {
             if (_udpClient.IsConnected(out var connectionId))
             {
+                if (!_hostWorker.TryGetSubscriptionId(typeof(TEvent), out var subscriptionId))
+                {
+                    return;
+                }
+
+                var outPacket = _outPacketsPool.GetOrCreate();
+                var bufferWriter = ObjectsPool<BufferWriter<byte>>.GetOrCreate();
+                bufferWriter.AddReference();
+                _serializer.Serialize(bufferWriter, @event);
+
+                outPacket.Setup(
+                    bufferWriter: bufferWriter,
+                    dataType: subscriptionId,
+                    ipV4Address: destination,
+                    connectionId: connectionId,
+                    channelId: channelId);
+
                 _outQueueDispatcher
                     .Dispatch(connectionId)
-                    .Produce(new OutPacket(
-                        connectionId: connectionId,
-                        channelId: channelId,
-                        @event: @event,
-                        ipV4Address: destination));
+                    .Produce(outPacket);
             }
         }
 

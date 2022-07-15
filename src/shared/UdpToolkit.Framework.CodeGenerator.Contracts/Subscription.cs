@@ -19,7 +19,7 @@ namespace UdpToolkit.Framework.Contracts
         /// <param name="onTimeout">Callback raised on event expired by timeout (ack dropped or not received a due period of time).</param>
         public Subscription(
             Action<Guid, IpV4Address, TEvent> onEvent,
-            Action<Guid> onTimeout)
+            Action onTimeout)
         {
             OnEvent = onEvent;
             OnTimeout = onTimeout;
@@ -33,6 +33,6 @@ namespace UdpToolkit.Framework.Contracts
         /// <summary>
         /// Gets on timeout callback.
         /// </summary>
-        public Action<Guid> OnTimeout { get; }
+        public Action OnTimeout { get; }
     }
 }

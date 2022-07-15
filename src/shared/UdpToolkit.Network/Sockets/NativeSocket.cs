@@ -9,7 +9,12 @@ namespace UdpToolkit.Network.Sockets
     /// </summary>
     public sealed class NativeSocket : ISocket
     {
+#if UNITY_BUILD
+        private const string LibName = "__Internal";
+#else
         private const string LibName = "udp_toolkit_native";
+#endif
+
         private IpV4Address _me;
 
         private int _socket;
@@ -20,8 +25,9 @@ namespace UdpToolkit.Network.Sockets
         /// </summary>
         public NativeSocket()
         {
-            _socket = CreateNative();
+            // NOTE: Startup must be called first (required for win platforms)!
             StartupNative();
+            _socket = CreateNative();
         }
 
         /// <summary>
@@ -51,6 +57,7 @@ namespace UdpToolkit.Network.Sockets
         /// <inheritdoc />
         public int Send(ref IpV4Address address, byte[] buffer, int length)
         {
+            // https://github.com/dotnet/runtime/issues/27091
             return SendNative(_socket, ref address, buffer, length);
         }
 

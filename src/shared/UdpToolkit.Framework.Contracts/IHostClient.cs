@@ -33,7 +33,7 @@ namespace UdpToolkit.Framework.Contracts
         /// </summary>
         /// <param name="connectionId">Connection identifier.</param>
         void Connect(
-            Guid? connectionId = null);
+            Guid connectionId);
 
         /// <summary>
         /// Connect to the remote host.
@@ -44,7 +44,7 @@ namespace UdpToolkit.Framework.Contracts
         void Connect(
             string host,
             int port,
-            Guid? connectionId = null);
+            Guid connectionId);
 
         /// <summary>
         /// Disconnect from the remote host.
@@ -61,6 +61,16 @@ namespace UdpToolkit.Framework.Contracts
             int port);
 
         /// <summary>
+        /// Ping remote host.
+        /// </summary>
+        void Ping();
+
+        /// <summary>
+        /// Resend packets.
+        /// </summary>
+        void ResendPackets();
+
+        /// <summary>
         /// Send event to the remote host.
         /// </summary>
         /// <param name="event">user-defined event instance.</param>
@@ -70,7 +80,8 @@ namespace UdpToolkit.Framework.Contracts
         /// </typeparam>
         void Send<TEvent>(
             TEvent @event,
-            byte channelId);
+            byte channelId)
+            where TEvent : class, IDisposable;
 
         /// <summary>
         /// Send event to the remote host.
@@ -81,9 +92,10 @@ namespace UdpToolkit.Framework.Contracts
         /// <typeparam name="TEvent">
         /// Type of user-defined event.
         /// </typeparam>
-        public void Send<TEvent>(
+        void Send<TEvent>(
             TEvent @event,
             IpV4Address destination,
-            byte channelId);
+            byte channelId)
+            where TEvent : class, IDisposable;
     }
 }

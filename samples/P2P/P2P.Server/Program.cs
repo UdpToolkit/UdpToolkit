@@ -3,11 +3,12 @@
     using System;
     using System.Linq;
     using P2P.Contracts;
+    using Serializers;
     using UdpToolkit;
     using UdpToolkit.Framework;
     using UdpToolkit.Framework.Contracts;
     using UdpToolkit.Network.Channels;
-    using UdpToolkit.Network.Contracts.Sockets;
+    using UdpToolkit.Network.Contracts;
     using UdpToolkit.Network.Sockets;
 
     public static class Program
@@ -21,7 +22,7 @@
             host.On<JoinEvent>(
                 onEvent: (connectionId, ip, joinEvent) =>
                 {
-                    groupManager.JoinOrCreate(joinEvent.GroupId, connectionId, ip);
+                    groupManager.JoinOrCreate(joinEvent.GroupId, connectionId);
 
                     Console.WriteLine($"{joinEvent.Nickname} joined to group!");
 
@@ -40,8 +41,8 @@
                         var group = groupManager.GetGroup(fetchPeers.GroupId);
 
                         var peers = group.GroupConnections
-                            .Where(x => x.ConnectionId != connectionId)
-                            .Select(x => new Peer(x.IpV4Address.Address.ToHost(), x.IpV4Address.Port))
+                            .Where(x => x.ConnectionId != connectionId) // exclude caller peer
+                            .Select(x => new Peer(IpUtils.ToString(x.IpV4Address.Address), x.IpV4Address.Port))
                             .ToList();
 
                         Console.WriteLine($"{fetchPeers.Nickname} Fetch peers!");
