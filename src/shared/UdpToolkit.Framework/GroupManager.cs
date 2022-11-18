@@ -7,17 +7,17 @@ namespace UdpToolkit.Framework
     using System.Linq;
     using System.Threading;
     using UdpToolkit.Framework.Contracts;
-    using UdpToolkit.Logging;
-    using UdpToolkit.Network.Contracts.Sockets;
+    using UdpToolkit.Framework.Contracts.Events;
+    using UdpToolkit.Network.Contracts.Connections;
 
     /// <inheritdoc />
     public sealed class GroupManager : IGroupManager
     {
+        private readonly IConnectionPool _connectionPool;
         private readonly ConcurrentDictionary<Guid, Group> _groups = new ConcurrentDictionary<Guid, Group>();
         private readonly IDateTimeProvider _dateTimeProvider;
-        private readonly TimeSpan _groupTtl;
         private readonly Timer _houseKeeper;
-        private readonly ILogger _logger;
+        private readonly IHostEventReporter _hostEventReporter;
 
         private bool _disposed = false;
 
@@ -27,18 +27,21 @@ namespace UdpToolkit.Framework
         /// <param name="dateTimeProvider">Instance of date time provider.</param>
         /// <param name="groupTtl">Group ttl.</param>
         /// <param name="scanFrequency">Scan frequency for cleanup inactive groups.</param>
-        /// <param name="logger">Instance of logger.</param>
+        /// <param name="hostEventReporter">Instance of host event reporter.</param>
+        /// <param name="connectionPool">Instance of connection pool.</param>
         public GroupManager(
             IDateTimeProvider dateTimeProvider,
             TimeSpan groupTtl,
             TimeSpan scanFrequency,
-            ILogger logger)
+            IHostEventReporter hostEventReporter,
+            IConnectionPool connectionPool)
         {
             _dateTimeProvider = dateTimeProvider;
-            _groupTtl = groupTtl;
-            _logger = logger;
+            GroupTtl = groupTtl;
+            _hostEventReporter = hostEventReporter;
+            _connectionPool = connectionPool;
             _houseKeeper = new Timer(
-                callback: ScanForCleaningInactiveConnections,
+                callback: ScanForCleaningInactiveGroups,
                 state: null,
                 dueTime: TimeSpan.FromSeconds(10),
                 period: scanFrequency);
@@ -54,6 +57,9 @@ namespace UdpToolkit.Framework
         }
 
         /// <inheritdoc />
+        public TimeSpan GroupTtl { get; }
+
+        /// <inheritdoc />
         public void Dispose()
         {
             Dispose(true);
@@ -63,32 +69,38 @@ namespace UdpToolkit.Framework
         /// <inheritdoc />
         public void JoinOrCreate(
             Guid groupId,
-            Guid connectionId,
-            IpV4Address ipV4Address)
+            Guid connectionId)
         {
-            _groups.AddOrUpdate(
-                key: groupId,
-                addValueFactory: (id) => new Group(
-                    id: id,
-                    groupConnections: new List<GroupConnection>
+            if (_connectionPool.TryGetConnection(connectionId, out var connection))
+            {
+                _groups.AddOrUpdate(
+                    key: groupId,
+                    addValueFactory: (id) => new Group(
+                        id: id,
+                        groupConnections: new List<IConnection>
+                        {
+                            connection,
+                        },
+                        createdAt: _dateTimeProvider.GetUtcNow()),
+                    updateValueFactory: (id, group) =>
                     {
-                        new GroupConnection(
-                            connectionId: connectionId,
-                            ipV4Address: ipV4Address),
-                    },
-                    createdAt: _dateTimeProvider.GetUtcNow()),
-                updateValueFactory: (id, group) =>
-                {
-                    if (group.GroupConnections.All(x => x.ConnectionId != connectionId))
-                    {
-                        group.GroupConnections.Add(
-                            item: new GroupConnection(
-                                connectionId: connectionId,
-                                ipV4Address: ipV4Address));
-                    }
+                        if (group.GroupConnections.All(x => x.ConnectionId != connectionId))
+                        {
+                            group.GroupConnections.Add(connection);
+                        }
 
-                    return group;
-                });
+                        return group;
+                    });
+            }
+        }
+
+        /// <inheritdoc />
+        public void Leave(Guid groupId, Guid connectionId)
+        {
+            if (_groups.TryGetValue(groupId, out var group) && _connectionPool.TryGetConnection(connectionId, out var connection))
+            {
+                group.GroupConnections.Remove(connection);
+            }
         }
 
         /// <inheritdoc />
@@ -113,20 +125,17 @@ namespace UdpToolkit.Framework
             _disposed = true;
         }
 
-        private void ScanForCleaningInactiveConnections(object state)
+        private void ScanForCleaningInactiveGroups(object state)
         {
-            if (_logger.IsEnabled(LogLevel.Debug))
-            {
-                _logger.Debug($"[UdpToolkit.Framework] Cleanup inactive groups");
-            }
-
             var now = _dateTimeProvider.GetUtcNow();
+            var scanStarted = new ScanExpiredGroupsStarted(now);
+            _hostEventReporter.Handle(in scanStarted);
             for (var i = 0; i < _groups.Count; i++)
             {
                 var group = _groups.ElementAt(i);
 
                 var ttlDiff = now - group.Value.CreatedAt;
-                if (ttlDiff > _groupTtl)
+                if (ttlDiff > GroupTtl)
                 {
                     _groups.TryRemove(group.Key, out _);
                 }

@@ -2,8 +2,9 @@ namespace UdpToolkit.Framework
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using UdpToolkit.Framework.Contracts;
-    using UdpToolkit.Logging;
+    using UdpToolkit.Framework.Contracts.Events;
     using UdpToolkit.Serialization;
 
     /// <summary>
@@ -11,6 +12,8 @@ namespace UdpToolkit.Framework
     /// </summary>
     public class HostSettings
     {
+        private int? _workers;
+
         /// <summary>
         /// Initializes a new instance of the <see cref="HostSettings"/> class.
         /// </summary>
@@ -47,7 +50,18 @@ namespace UdpToolkit.Framework
         /// <remarks>
         /// 1 Thread per worker.
         /// </remarks>
-        public int Workers { get; set; } = 8;
+        public int Workers
+        {
+            get
+            {
+                return _workers ?? Environment.ProcessorCount - (HostPorts.Count() * 2);
+            }
+
+            set
+            {
+                _workers = value;
+            }
+        }
 
         /// <summary>
         /// Gets instance of serializer.
@@ -55,9 +69,14 @@ namespace UdpToolkit.Framework
         public ISerializer Serializer { get; }
 
         /// <summary>
-        /// Gets or sets instance of logger factory.
+        /// Gets instance of serializer.
         /// </summary>
-        public ILoggerFactory LoggerFactory { get; set; } = new SimpleConsoleLoggerFactory(LogLevel.Debug);
+        public IAsyncQueueFactory AsyncQueueFactory { get; } = new BlockingAsyncQueueFactory();
+
+        /// <summary>
+        /// Gets or sets instance of host event reporter.
+        /// </summary>
+        public IHostEventReporter HostEventReporter { get; set; } = new DefaultHostEventReporter();
 
         /// <summary>
         /// Gets or sets frequency of cleanup expired timers.
@@ -81,5 +100,10 @@ namespace UdpToolkit.Framework
         /// Gets or sets Executor instance.
         /// </summary>
         public IExecutor Executor { get; set; } = new ThreadBasedExecutor();
+
+        /// <summary>
+        /// Gets or sets resends packets interval.
+        /// </summary>
+        public TimeSpan ResendPacketsInterval { get; set; } = TimeSpan.FromSeconds(1);
     }
 }

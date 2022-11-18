@@ -1,7 +1,6 @@
 namespace UdpToolkit.Framework.Contracts
 {
     using System;
-    using UdpToolkit.Network.Contracts.Sockets;
 
     /// <summary>
     /// Abstraction for managing groups of connections.
@@ -9,15 +8,27 @@ namespace UdpToolkit.Framework.Contracts
     public interface IGroupManager : IDisposable
     {
         /// <summary>
+        /// Gets group ttl.
+        /// </summary>
+        TimeSpan GroupTtl { get; }
+
+        /// <summary>
         /// Join or create group.
         /// </summary>
         /// <param name="groupId">Group identifier.</param>
         /// <param name="connectionId">Connection identifier.</param>
-        /// <param name="ipV4Address">Ip address.</param>
         void JoinOrCreate(
             Guid groupId,
-            Guid connectionId,
-            IpV4Address ipV4Address);
+            Guid connectionId);
+
+        /// <summary>
+        /// Leave group.
+        /// </summary>
+        /// <param name="groupId">Group identifier.</param>
+        /// <param name="connectionId">Connection identifier.</param>
+        void Leave(
+            Guid groupId,
+            Guid connectionId);
 
         /// <summary>
         /// Get existing group.

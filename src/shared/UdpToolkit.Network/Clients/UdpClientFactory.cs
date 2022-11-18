@@ -1,63 +1,62 @@
 namespace UdpToolkit.Network.Clients
 {
-    using System;
-    using UdpToolkit.Logging;
+    using System.Buffers;
     using UdpToolkit.Network.Connections;
+    using UdpToolkit.Network.Contracts;
     using UdpToolkit.Network.Contracts.Clients;
+    using UdpToolkit.Network.Contracts.Connections;
+    using UdpToolkit.Network.Contracts.Pooling;
     using UdpToolkit.Network.Contracts.Sockets;
-    using UdpToolkit.Network.Queues;
     using UdpToolkit.Network.Utils;
 
     /// <inheritdoc />
     public class UdpClientFactory : IUdpClientFactory
     {
-        private readonly UdpClientSettings _udpClientSettings;
+        private readonly INetworkSettings _networkSettings;
         private readonly IDateTimeProvider _dateTimeProvider;
-        private readonly ILoggerFactory _loggerFactory;
-        private readonly Lazy<IConnectionPool> _lazyConnectionPool;
-        private readonly Lazy<IResendQueue> _lazyResendQueue;
+        private readonly IConnectionPool _connectionPool;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="UdpClientFactory"/> class.
         /// </summary>
-        /// <param name="udpClientSettings">Instance of UDP client settings.</param>
-        /// <param name="connectionPoolSettings">Instance of connection pool settings.</param>
-        /// <param name="loggerFactory">Instance of logger factory.</param>
+        /// <param name="networkSettings">Instance of UDP client settings.</param>
         /// <param name="dateTimeProvider">Instance of date time provider.</param>
         public UdpClientFactory(
-            UdpClientSettings udpClientSettings,
-            ConnectionPoolSettings connectionPoolSettings,
-            ILoggerFactory loggerFactory,
+            INetworkSettings networkSettings,
             IDateTimeProvider dateTimeProvider = null)
         {
-            _udpClientSettings = udpClientSettings;
-            _loggerFactory = loggerFactory;
-            _lazyResendQueue = new Lazy<IResendQueue>(() => new ResendQueue());
-            _lazyConnectionPool = new Lazy<IConnectionPool>(() =>
-            {
-                var connectionFactory = new ConnectionFactory(
-                    channelsFactory: _udpClientSettings.ChannelsFactory);
+            _connectionPool = new ConnectionPool(
+                dateTimeProvider: new Network.Utils.DateTimeProvider(),
+                networkEventReporter: networkSettings.NetworkEventReporter,
+                settings: new ConnectionPoolSettings(
+                    connectionTimeout: networkSettings.ConnectionTimeout,
+                    connectionsCleanupFrequency: networkSettings.ConnectionsCleanupFrequency),
+                connectionFactory: new ConnectionFactory(networkSettings.ChannelsFactory));
 
-                return new ConnectionPool(
-                    dateTimeProvider: _dateTimeProvider,
-                    logger: _loggerFactory.Create<ConnectionPool>(),
-                    settings: connectionPoolSettings,
-                    connectionFactory: connectionFactory);
-            });
+            _networkSettings = networkSettings;
             _dateTimeProvider = dateTimeProvider ?? new DateTimeProvider();
         }
 
         /// <inheritdoc />
-        public IUdpClient Create(
+        public unsafe IUdpClient Create(
+            string id,
             IpV4Address ipV4Address)
         {
+            var packetsPool = new ConcurrentPool<InNetworkPacket>(
+                factory: (pool) => new InNetworkPacket(
+                    arrayPool: ArrayPool<byte>.Shared,
+                    networkPacketsPool: pool),
+                initSize: _networkSettings.PacketsPoolSize);
+
             return new UdpClient(
-                connectionPool: _lazyConnectionPool.Value,
-                logger: _loggerFactory.Create<UdpClient>(),
+                id: id,
+                connectionPool: _connectionPool,
+                networkEventReporter: this._networkSettings.NetworkEventReporter,
                 dateTimeProvider: _dateTimeProvider,
-                client: _udpClientSettings.SocketFactory.Create(ipV4Address),
-                resendQueue: _lazyResendQueue.Value,
-                settings: _udpClientSettings);
+                client: _networkSettings.SocketFactory.Create(ipV4Address),
+                settings: _networkSettings,
+                arrayPool: ArrayPool<byte>.Shared,
+                packetsPool: packetsPool);
         }
     }
 }

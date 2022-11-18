@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
         <NoWarn>SA0001, SA1600</NoWarn>
         <IsPackable>false</IsPackable>
     </PropertyGroup>
@@ -9,13 +9,13 @@
     <ItemGroup>
         <PackageReference Include="Bogus" Version="28.4.4" />
         <PackageReference Include="FluentAssertions" Version="5.10.3" />
-        <PackageReference Include="MessagePack" Version="2.2.60" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0" />
         <PackageReference Include="xunit" Version="2.4.0" />
         <PackageReference Include="xunit.runner.visualstudio" Version="2.4.0" />
     </ItemGroup>
     
     <ItemGroup>
+      <ProjectReference Include="..\..\samples\Serialization\Serializers\Serializers.csproj" />
       <ProjectReference Include="..\..\src\shared\UdpToolkit.Framework\UdpToolkit.Framework.csproj" />
     </ItemGroup>
 

@@ -3,10 +3,11 @@ namespace UdpToolkit.Network.Connections
     using System;
     using System.Linq;
     using UdpToolkit.Network.Contracts.Channels;
+    using UdpToolkit.Network.Contracts.Connections;
     using UdpToolkit.Network.Contracts.Sockets;
 
     /// <inheritdoc />
-    internal sealed class ConnectionFactory : IConnectionFactory
+    public sealed class ConnectionFactory : IConnectionFactory
     {
         private readonly IChannelsFactory _channelsFactory;
 
@@ -14,7 +15,7 @@ namespace UdpToolkit.Network.Connections
         /// Initializes a new instance of the <see cref="ConnectionFactory"/> class.
         /// </summary>
         /// <param name="channelsFactory">Instance of channels factory.</param>
-        internal ConnectionFactory(
+        public ConnectionFactory(
             IChannelsFactory channelsFactory)
         {
             _channelsFactory = channelsFactory;
@@ -23,25 +24,27 @@ namespace UdpToolkit.Network.Connections
         /// <inheritdoc />
         public IConnection Create(
             Guid connectionId,
+            Guid routingKey,
             bool keepAlive,
-            DateTimeOffset lastHeartbeat,
+            DateTimeOffset createdAt,
             IpV4Address ipAddress)
         {
-            var outputChannels = _channelsFactory
+            var outputChannelsMap = _channelsFactory
                 .CreateChannelsList()
                 .ToDictionary(channel => channel.ChannelId, channel => channel);
 
-            var inputChannels = _channelsFactory
+            var inputChannelsMap = _channelsFactory
                 .CreateChannelsList()
                 .ToDictionary(channel => channel.ChannelId, channel => channel);
 
             return new Connection(
                 connectionId: connectionId,
+                routingKey: routingKey,
                 keepAlive: keepAlive,
-                lastHeartbeat: lastHeartbeat,
                 ipAddress: ipAddress,
-                outputChannels: outputChannels,
-                inputChannels: inputChannels);
+                createdAt: createdAt,
+                outputChannelsMap: outputChannelsMap,
+                inputChannelsMap: inputChannelsMap);
         }
     }
 }

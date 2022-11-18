@@ -23,7 +23,7 @@ namespace UdpToolkit.Framework.Contracts
         public static void On<TEvent>(
             this IHost host,
             Action<Guid, IpV4Address, TEvent> onEvent,
-            Action<Guid> onTimeout = null)
+            Action onTimeout = null)
         {
 #pragma warning disable SA1503
             if (host == null) throw new ArgumentNullException(nameof(host));

@@ -39,7 +39,8 @@ namespace UdpToolkit.Framework
 
         /// <inheritdoc />
         public void Connect(
-            Guid? connectionId = null)
+            Guid connectionId,
+            Guid routingKey)
         {
             // nothing to do
         }
@@ -48,7 +49,8 @@ namespace UdpToolkit.Framework
         public void Connect(
             string host,
             int port,
-            Guid? connectionId = null)
+            Guid connectionId,
+            Guid routingKey)
         {
             // nothing to do
         }
@@ -68,9 +70,22 @@ namespace UdpToolkit.Framework
         }
 
         /// <inheritdoc />
+        public void Ping()
+        {
+            // nothing to do
+        }
+
+        /// <inheritdoc />
+        public void ResendPackets()
+        {
+            // nothing to do
+        }
+
+        /// <inheritdoc />
         public void Send<TEvent>(
             TEvent @event,
             byte channelId)
+            where TEvent : class, IDisposable
         {
             // nothing to do
         }
@@ -80,6 +95,26 @@ namespace UdpToolkit.Framework
             TEvent @event,
             IpV4Address destination,
             byte channelId)
+            where TEvent : class, IDisposable
+        {
+            // nothing to do
+        }
+
+        /// <inheritdoc />
+        public void SendUnmanaged<TEvent>(
+            TEvent @event,
+            byte channelId)
+        where TEvent : unmanaged
+        {
+            // nothing to do
+        }
+
+        /// <inheritdoc />
+        public void SendUnmanaged<TEvent>(
+            TEvent @event,
+            IpV4Address destination,
+            byte channelId)
+        where TEvent : unmanaged
         {
             // nothing to do
         }

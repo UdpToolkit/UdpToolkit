@@ -23,7 +23,7 @@ namespace UdpToolkit.Benchmarks
         {
             _subscription = new Subscription<Ping>(
                 onEvent: (connectionId, ip, ping) => { },
-                onTimeout: (connectionId) => { });
+                onTimeout: () => { });
         }
 
         [Benchmark]
@@ -40,7 +40,7 @@ namespace UdpToolkit.Benchmarks
         {
             for (int i = 0; i < Repeats; i++)
             {
-                _subscription.OnTimeout(Guid.NewGuid());
+                _subscription.OnTimeout();
             }
         }
 

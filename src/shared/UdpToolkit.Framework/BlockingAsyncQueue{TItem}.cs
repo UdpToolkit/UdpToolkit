@@ -4,7 +4,7 @@ namespace UdpToolkit.Framework
     using System.Collections.Concurrent;
     using System.Diagnostics.CodeAnalysis;
     using UdpToolkit.Framework.Contracts;
-    using UdpToolkit.Logging;
+    using UdpToolkit.Framework.Contracts.Events;
 
     /// <summary>
     /// Async queue based on .NET BlockingCollection.
@@ -14,27 +14,25 @@ namespace UdpToolkit.Framework
     /// </typeparam>
     public sealed class BlockingAsyncQueue<TItem> : IAsyncQueue<TItem>
     {
-        private readonly Action<TItem> _action;
+        private readonly string _id;
         private readonly BlockingCollection<TItem> _input;
-        private readonly ILogger _logger;
+        private readonly IHostEventReporter _hostEventReporter;
 
         private bool _disposed = false;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="BlockingAsyncQueue{TItem}"/> class.
         /// </summary>
-        /// <param name="boundedCapacity">Size of capacity for the async queue.</param>
-        /// <param name="action">Action for process consumed items.</param>
-        /// <param name="logger">Logger instance.</param>
+        /// <param name="id">Queue identifier.</param>
+        /// <param name="hostEventReporter">Host event reporter.</param>
         public BlockingAsyncQueue(
-            int boundedCapacity,
-            Action<TItem> action,
-            ILogger logger)
+            string id,
+            IHostEventReporter hostEventReporter)
         {
-            _action = action;
-            _logger = logger;
+            _id = id;
+            _hostEventReporter = hostEventReporter;
             _input = new BlockingCollection<TItem>(
-                boundedCapacity: boundedCapacity,
+                boundedCapacity: int.MaxValue,
                 collection: new ConcurrentQueue<TItem>());
         }
 
@@ -46,6 +44,9 @@ namespace UdpToolkit.Framework
         {
             Dispose(false);
         }
+
+        /// <inheritdoc />
+        public event Action<TItem> OnItemConsumed;
 
         /// <inheritdoc/>
         public void Dispose()
@@ -64,6 +65,8 @@ namespace UdpToolkit.Framework
             try
             {
                 _input.Add(item);
+                var queueItemConsumed = new QueueItemConsumed(_id);
+                _hostEventReporter.Handle(in queueItemConsumed);
             }
             catch (ObjectDisposedException)
             {
@@ -82,12 +85,12 @@ namespace UdpToolkit.Framework
                 {
                     try
                     {
-                        _action(@event);
+                        OnItemConsumed?.Invoke(@event);
                     }
                     catch (Exception ex)
                     {
-                        _logger.Error($"[UdpToolkit.Framework] Exception on receive task: {ex}");
-                        _logger.Warning("[UdpToolkit.Framework] Restart consume...");
+                        var exThrown = new ExceptionThrown(ex);
+                        _hostEventReporter.Handle(in exThrown);
                     }
                 }
             }
