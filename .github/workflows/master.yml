@@ -1,16 +1,20 @@
 name: master
 on: 
   push:
-    branches:
-      - master
+    tags:
+      - 'v*.*.*'
+
 jobs:
   build:
     runs-on: ubuntu-latest
     container: gableroux/unity3d:2019.3.12f1
     env:
-      PACKAGE_VERSION: 1.0.0-alpha.1.${{ github.run_id }}
       NUGET_KEY: ${{ secrets.NUGET_KEY }}
     steps:
+      - name: Extract version from tag
+        id: extract_tag
+        run: echo "PACKAGE_VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
       - name: Checkout project
         uses: actions/checkout@v2
 
