@@ -11,10 +11,10 @@ jobs:
       PACKAGE_VERSION: 1.0.0-alpha.1.${{ github.run_id }}
     steps:
       - name: Checkout project
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Setup dotnet
-        uses: actions/setup-dotnet@v2
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '6.0.202'
 
@@ -39,21 +39,21 @@ jobs:
         run: ./scripts/publish_unitypckage.sh
 
       - name: Upload Unitypackage Build
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: UdpToolkit.unitypackage
           if-no-files-found: error
           path: ./unity_package/UdpToolkit.${{ env.PACKAGE_VERSION }}.unitypackage
 
       - name: Upload Nuget packages
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: NugetPackages
           if-no-files-found: error
           path: ./**/*.nupkg
           
       - name: Upload Documentation
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: Documentation
           if-no-files-found: error
