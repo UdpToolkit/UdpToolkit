@@ -34,7 +34,13 @@ jobs:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        run: ./scripts/publish_unitypckage.sh
+        with:
+          projectPath: src/unity/UdpToolkit.Unity
+          unityVersion: 2021.3.11f1
+          targetPlatform: StandaloneLinux64
+          buildMethod: PackageExporter.Export
+          customParameters: /headless /ScriptBackend mono
+          versioning: None
 
       - name: Upload Unitypackage Build
         uses: actions/upload-artifact@v4
